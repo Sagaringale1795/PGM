@@ -1,31 +1,21 @@
-name: PGM CI + Docker
+name: PGM CI Pipeline
 
 on:
   push:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:name: PGM CI Pipeline
-
-on:
-  push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      #  Checkout source code
-      - name: Checkout source
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      # Setup Java 17
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -33,40 +23,17 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Give execute permission to mvnw
       - name: Grant execute permission for mvnw
         run: chmod +x mvnw
 
-      # Build Spring Boot JAR
       - name: Build Spring Boot JAR
         run: ./mvnw clean package -DskipTests
 
-      # 5️⃣ Upload JAR as artifact (downloadable)
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: pgm-jar
           path: target/*.jar
-
-      # 6️⃣ Build Docker image
-      - name: Build Docker Image
-        run: docker build -t pgm-app:latest .
-
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Grant execute permission for mvnw
-        run: chmod +x mvnw
-
-      - name: Build Spring Boot JAR
-        run: ./mvnw clean package -DskipTests
 
       - name: Build Docker Image
         run: docker build -t pgm-app:latest .
