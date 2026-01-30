@@ -30,7 +30,7 @@ jobs:
       - name: Grant mvnw permission
         run: chmod +x mvnw
 
-      #  Extract base version from pom.xml
+      # Extract base version from pom.xml
       - name: Read base version
         id: base
         run: |
@@ -72,4 +72,3 @@ jobs:
         with:
           name: pgm-${{ github.event.inputs.environment }}
           path: target/*.jar
-
