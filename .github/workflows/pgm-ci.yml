@@ -1,24 +1,19 @@
-name: PGM Versioned Build (Auto RC)
+name: PGM Unified Build (DEV + UAT + NFT)
 
 on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Select environment"
-        required: true
-        type: choice
-        options:
-          - dev
-          - uat
-          - nft
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (with tags)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # IMPORTANT for tags
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -30,45 +25,61 @@ jobs:
       - name: Grant mvnw permission
         run: chmod +x mvnw
 
-      # Extract base version from pom.xml
+      #  Read base version
       - name: Read base version
         id: base
         run: |
           BASE_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
 
-      #  Calculate version
-      - name: Calculate version
+      #  Find last RC from git tags
+      - name: Calculate RC versions
         run: |
-          if [ "${{ github.event.inputs.environment }}" = "dev" ]; then
-            NEW_VERSION="${BASE_VERSION}-SNAPSHOT"
+          LAST_RC=$(git tag | grep "^v${BASE_VERSION}-RC" | sed "s/v${BASE_VERSION}-RC//" | sort -n | tail -1)
+          if [ -z "$LAST_RC" ]; then
+            RC1=1
           else
-            LAST_RC=$(ls target 2>/dev/null | grep -oE 'RC[0-9]+' | sort -V | tail -n 1 | sed 's/RC//')
-            if [ -z "$LAST_RC" ]; then
-              NEXT_RC=1
-            else
-              NEXT_RC=$((LAST_RC + 1))
-            fi
-            NEW_VERSION="${BASE_VERSION}-RC${NEXT_RC}"
+            RC1=$((LAST_RC + 1))
           fi
+          RC2=$((RC1 + 1))
 
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "RC1=$RC1" >> $GITHUB_ENV
+          echo "RC2=$RC2" >> $GITHUB_ENV
 
-      #  Set version in Maven
-      - name: Set Maven version
-        run: ./mvnw versions:set -DnewVersion=${NEW_VERSION}
+      #  DEV SNAPSHOT
+      - name: Build DEV SNAPSHOT
+        run: |
+          ./mvnw versions:set -DnewVersion=${BASE_VERSION}-SNAPSHOT
+          ./mvnw clean package -DskipTests
+          cp target/*.jar target/pgm-${BASE_VERSION}-SNAPSHOT.jar
 
-      #  Build
-      - name: Build JAR
-        run: ./mvnw clean package -DskipTests
+      #  UAT RC
+      - name: Build UAT RC
+        run: |
+          ./mvnw versions:set -DnewVersion=${BASE_VERSION}-RC${RC1}
+          ./mvnw clean package -DskipTests
+          cp target/*.jar target/pgm-${BASE_VERSION}-RC${RC1}.jar
+          git tag v${BASE_VERSION}-RC${RC1}
 
-      #  Create latest alias
+      #  NFT RC
+      - name: Build NFT RC
+        run: |
+          ./mvnw versions:set -DnewVersion=${BASE_VERSION}-RC${RC2}
+          ./mvnw clean package -DskipTests
+          cp target/*.jar target/pgm-${BASE_VERSION}-RC${RC2}.jar
+          git tag v${BASE_VERSION}-RC${RC2}
+
+      # Latest alias
       - name: Create latest JAR
-        run: cp target/*.jar target/pgm-latest.jar
+        run: cp target/pgm-${BASE_VERSION}-RC${RC2}.jar target/pgm-latest.jar
 
-      #  Upload artifacts
-      - name: Upload JARs
+      # Push tags
+      - name: Push git tags
+        run: git push origin --tags
+
+      #  Upload all JARs
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pgm-${{ github.event.inputs.environment }}
+          name: pgm-all-jars
           path: target/*.jar
