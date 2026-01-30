@@ -1,39 +1,75 @@
-name: PGM CI Pipeline
+name: PGM Versioned Build (Auto RC)
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - uat
+          - nft
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
 
-      - name: Grant execute permission for mvnw
+      - name: Grant mvnw permission
         run: chmod +x mvnw
 
-      - name: Build Spring Boot JAR
+      #  Extract base version from pom.xml
+      - name: Read base version
+        id: base
+        run: |
+          BASE_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
+
+      #  Calculate version
+      - name: Calculate version
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "dev" ]; then
+            NEW_VERSION="${BASE_VERSION}-SNAPSHOT"
+          else
+            LAST_RC=$(ls target 2>/dev/null | grep -oE 'RC[0-9]+' | sort -V | tail -n 1 | sed 's/RC//')
+            if [ -z "$LAST_RC" ]; then
+              NEXT_RC=1
+            else
+              NEXT_RC=$((LAST_RC + 1))
+            fi
+            NEW_VERSION="${BASE_VERSION}-RC${NEXT_RC}"
+          fi
+
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      #  Set version in Maven
+      - name: Set Maven version
+        run: ./mvnw versions:set -DnewVersion=${NEW_VERSION}
+
+      #  Build
+      - name: Build JAR
         run: ./mvnw clean package -DskipTests
 
-      - name: Upload JAR artifact
+      #  Create latest alias
+      - name: Create latest JAR
+        run: cp target/*.jar target/pgm-latest.jar
+
+      #  Upload artifacts
+      - name: Upload JARs
         uses: actions/upload-artifact@v4
         with:
-          name: pgm-jar
+          name: pgm-${{ github.event.inputs.environment }}
           path: target/*.jar
 
-      - name: Build Docker Image
-        run: docker build -t pgm-app:latest .
