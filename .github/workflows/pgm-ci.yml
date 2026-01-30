@@ -1,9 +1,7 @@
-name: PGM Spring Boot CI
+name: PGM CI + Docker
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
 
 jobs:
@@ -24,5 +22,8 @@ jobs:
       - name: Grant execute permission for mvnw
         run: chmod +x mvnw
 
-      - name: Build with Maven Wrapper
+      - name: Build Spring Boot JAR
         run: ./mvnw clean package -DskipTests
+
+      - name: Build Docker Image
+        run: docker build -t pgm-app:latest .
