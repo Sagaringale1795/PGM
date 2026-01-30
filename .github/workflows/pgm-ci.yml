@@ -1,5 +1,8 @@
 name: PGM Unified Build (DEV + UAT + NFT)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -10,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code (with tags)
+      - name: Checkout code with tags
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT for tags
+          fetch-depth: 0
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -25,14 +28,11 @@ jobs:
       - name: Grant mvnw permission
         run: chmod +x mvnw
 
-      #  Read base version
       - name: Read base version
-        id: base
         run: |
           BASE_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
 
-      #  Find last RC from git tags
       - name: Calculate RC versions
         run: |
           LAST_RC=$(git tag | grep "^v${BASE_VERSION}-RC" | sed "s/v${BASE_VERSION}-RC//" | sort -n | tail -1)
@@ -46,14 +46,12 @@ jobs:
           echo "RC1=$RC1" >> $GITHUB_ENV
           echo "RC2=$RC2" >> $GITHUB_ENV
 
-      #  DEV SNAPSHOT
       - name: Build DEV SNAPSHOT
         run: |
           ./mvnw versions:set -DnewVersion=${BASE_VERSION}-SNAPSHOT
           ./mvnw clean package -DskipTests
           cp target/*.jar target/pgm-${BASE_VERSION}-SNAPSHOT.jar
 
-      #  UAT RC
       - name: Build UAT RC
         run: |
           ./mvnw versions:set -DnewVersion=${BASE_VERSION}-RC${RC1}
@@ -61,7 +59,6 @@ jobs:
           cp target/*.jar target/pgm-${BASE_VERSION}-RC${RC1}.jar
           git tag v${BASE_VERSION}-RC${RC1}
 
-      #  NFT RC
       - name: Build NFT RC
         run: |
           ./mvnw versions:set -DnewVersion=${BASE_VERSION}-RC${RC2}
@@ -69,16 +66,13 @@ jobs:
           cp target/*.jar target/pgm-${BASE_VERSION}-RC${RC2}.jar
           git tag v${BASE_VERSION}-RC${RC2}
 
-      # Latest alias
       - name: Create latest JAR
         run: cp target/pgm-${BASE_VERSION}-RC${RC2}.jar target/pgm-latest.jar
 
-      # Push tags
       - name: Push git tags
         run: git push origin --tags
 
-      #  Upload all JARs
-      - name: Upload artifacts
+      - name: Upload all JARs
         uses: actions/upload-artifact@v4
         with:
           name: pgm-all-jars
